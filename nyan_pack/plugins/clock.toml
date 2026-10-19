@@ -1,0 +1,38 @@
+schema = 1
+id = "clock"
+name = "Clock"
+description = "Render a local clock once per minute."
+
+[inputs.color]
+type = "string"
+default = "white"
+
+[requires]
+libraries = ["PIL"]
+
+[output]
+type = "image"
+formats = ["png"]
+
+[operation]
+interval = 1
+settle = 0
+timeout = 5
+
+[python]
+code = '''
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+
+def poll(ctx):
+    now = datetime.now().astimezone()
+    text = now.strftime("%H:%M")
+    image = Image.new("RGB", (ctx.width, ctx.height), "black")
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=max(8, ctx.width // 4))
+    box = draw.textbbox((0, 0), text, font=font)
+    x = (ctx.width - box[2] + box[0]) // 2 - box[0]
+    y = (ctx.height - box[3] + box[1]) // 2 - box[1]
+    draw.text((x, y), text, fill=ctx.inputs["color"], font=font)
+    return ctx.image(image, now.strftime("%Y-%m-%dT%H:%M%z"), text)
+'''

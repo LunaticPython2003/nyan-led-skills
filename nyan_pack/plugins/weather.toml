@@ -1,0 +1,35 @@
+schema = 1
+id = "weather"
+name = "Weather card"
+description = "Current weather at explicit coordinates; refresh every ten minutes."
+
+[inputs.latitude]
+type = "number"
+required = true
+[inputs.longitude]
+type = "number"
+required = true
+[inputs.label]
+type = "string"
+default = "Weather"
+[inputs.units]
+type = "string"
+default = "celsius"
+choices = ["celsius", "fahrenheit"]
+
+[requires]
+libraries = ["PIL"]
+[output]
+type = "image"
+formats = ["png"]
+quality = "natural"
+[operation]
+interval = 600
+settle = 0
+timeout = 15
+[python]
+code = '''
+from nyan_pack.providers.cards import weather
+def poll(ctx):
+    return weather(ctx)
+'''

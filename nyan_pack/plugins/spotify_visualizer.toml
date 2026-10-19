@@ -1,0 +1,39 @@
+schema = 1
+id = "spotify_visualizer"
+name = "Media artwork + live desktop spectrum"
+description = "Live desktop spectrum with full-detail media artwork, sent as complete GIF frames."
+[inputs.player]
+type = "string"
+default = "spotify"
+[inputs.source]
+type = "string"
+default = "@DEFAULT_MONITOR@"
+[inputs.height]
+type = "integer"
+default = 24
+[inputs.color]
+type = "string"
+default = "cyan"
+[inputs.gain]
+type = "number"
+default = 1.0
+[requires]
+binaries = ["playerctl", "parec"]
+libraries = ["PIL"]
+[output]
+type = "scene"
+formats = ["jpeg", "png", "gif", "webp"]
+quality = "natural"
+max_bytes = 49980
+[operation]
+interval = 0.5
+settle = 0
+timeout = 25
+max_age = 5
+[python]
+code = '''
+from nyan_pack.providers.audio import AudioVisualizer
+visualizer = AudioVisualizer()
+def poll(ctx):
+    return visualizer.poll(ctx)
+'''

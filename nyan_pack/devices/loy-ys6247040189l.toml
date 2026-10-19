@@ -1,0 +1,29 @@
+schema = 1
+id = "loy-ys6247040189l"
+name = "Nyan / LOY YS6247040189L"
+driver = "nyan_pack.devices.loy:BackpackConnection"
+
+[display]
+width = 96
+height = 128
+quality = "detail"
+fit = "cover"
+
+[transport]
+chunk_delay = 0.0
+ack_timeout = 5.0
+staged_upload = true
+stream_chunk = 960
+
+[capabilities]
+gif = true
+staged_upload = true
+stored_program_switch = true
+program_storage = "session RAM; slots 1 and 2"
+raw_frames = false
+live_regions = false
+
+[calibration]
+required = true
+method = "bounds"
+description = "Confirm all four colored edges match the physical panel, with no unused LEDs outside."

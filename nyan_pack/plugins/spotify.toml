@@ -1,0 +1,29 @@
+schema = 1
+id = "spotify"
+name = "Spotify album art"
+description = "Spotify through Linux MPRIS, using playerctl; no API credentials."
+
+[inputs.player]
+type = "string"
+default = "spotify"
+
+[requires]
+binaries = ["playerctl"]
+libraries = []
+
+[output]
+type = "image"
+formats = ["jpeg", "png", "gif", "webp"]
+
+[operation]
+interval = 2
+settle = 2
+timeout = 10
+
+[python]
+code = '''
+from nyan_pack.providers.mpris import album_art
+
+def poll(ctx):
+    return album_art(ctx.inputs["player"])
+'''

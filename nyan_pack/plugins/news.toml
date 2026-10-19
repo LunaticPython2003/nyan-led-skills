@@ -1,0 +1,30 @@
+schema = 1
+id = "news"
+name = "RSS / Atom news"
+description = "Refresh a feed every minute; show the latest headline/summary as paged GIF text."
+[inputs.feed]
+type = "string"
+required = true
+[inputs.label]
+type = "string"
+default = "News"
+[inputs.page_seconds]
+type = "integer"
+default = 4
+choices = [2, 3, 4, 5, 8, 10]
+[requires]
+libraries = ["PIL"]
+[output]
+type = "image"
+formats = ["gif"]
+quality = "natural"
+[operation]
+interval = 60
+settle = 0
+timeout = 15
+[python]
+code = '''
+from nyan_pack.providers.cards import news
+def poll(ctx):
+    return news(ctx)
+'''

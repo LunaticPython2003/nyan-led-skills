@@ -1,0 +1,28 @@
+schema = 1
+id = "mpris"
+name = "Any MPRIS media player"
+description = "Prefer playing players; supports Spotify, VLC, browsers, mpv, and other MPRIS clients."
+
+[inputs.player]
+type = "string"
+default = "auto"
+
+[requires]
+binaries = ["playerctl"]
+
+[output]
+type = "image"
+formats = ["jpeg", "png", "gif", "webp"]
+
+[operation]
+interval = 2
+settle = 2
+timeout = 30
+
+[python]
+code = '''
+from nyan_pack.providers.mpris import album_art
+
+def poll(ctx):
+    return album_art(ctx.inputs["player"])
+'''

@@ -1,0 +1,32 @@
+schema = 1
+id = "image"
+name = "Image or animated GIF"
+description = "Watch a local file; upload again when its modification time changes."
+
+[inputs.path]
+type = "string"
+required = true
+
+[requires]
+binaries = []
+
+[output]
+type = "image"
+formats = ["png", "jpeg", "gif", "webp", "bmp"]
+quality = "natural"
+
+[operation]
+interval = 1
+settle = 0.5
+timeout = 5
+
+[python]
+code = '''
+from pathlib import Path
+from nyan_pack.plugin_api import Frame
+
+def poll(ctx):
+    path = Path(ctx.inputs["path"]).expanduser().resolve()
+    info = path.stat()
+    return Frame(f"{path}:{info.st_mtime_ns}:{info.st_size}", str(path), path.name)
+'''

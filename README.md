@@ -1,75 +1,92 @@
 # nyan-pack
 
-Control a [Nyan Gear](https://nyangear.com/) LED backpack from your computer via Bluetooth Low Energy.
+A Linux plugin watcher for Nyan / LOY BLE LED backpacks. Spotify, other MPRIS players, local images/GIFs, and Python content plugins share one persistent Bluetooth connection. Currently the imlemenation is live for Spotify and there's no reason for it to not work with other players or services too by adding the relevant plugin. No Spotify API credentials are required.
 
-The backpack is a rebranded product by **Shenzhen Yanse Technology**, sold under many names (Nyan Gear, LOY Bags, Gelrova, KWQ, Welaso, HypeBrother). The official app is [LOY SPACE](https://apps.apple.com/us/app/loy-space/id1636648229). No official API exists — this project reverse-engineers the BLE protocol.
+The calibrated profile for **YS624#####** uses the whole panel at **96×128**, with the stronger `detail` artwork preset. Other devices require visual calibration. The BLE driver preserves the original GIF packet format and acknowledged static uploader.
 
-## Usage
+## Setup and service
 
-```bash
-uv run scripts/display.py                    # rainbow test pattern
-uv run scripts/display.py --text "HI"        # text
-uv run scripts/display.py --color red        # solid color
-uv run scripts/display.py --color "#20e0af"  # hex color
-uv run scripts/display.py photo.png          # any image file
-```
-
-Utility scripts:
-```bash
-uv run scripts/scan.py       # find BLE devices nearby
-uv run scripts/discover.py   # inspect GATT services of the backpack
-```
-
-## Setup
-
-Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/):
+Requires Linux/BlueZ, Python 3.14+, [uv](https://docs.astral.sh/uv/), and `playerctl` for media plugins:
 
 ```bash
+sudo apt install playerctl bluez
 uv sync
+uv run nyan service install
+uv run nyan status
 ```
 
-The backpack must be powered on (USB power bank connected) and **not** connected to the LOY SPACE app simultaneously.
+The installer enables `nyan-pack.service` for your user, starts it immediately, and creates `~/.local/bin/nyan` when that path is available. Use `uv run nyan` from this checkout if the launcher is outside your shell's PATH. The service starts when your user systemd session starts and requires your desktop session's MPRIS bus. Keep this checkout and its `.venv` in place, or reinstall the service after moving them.
 
-## Protocol
+Previously saved `~/.config/nyan-spotify/display_size` and `artwork_quality` preferences migrate on first start. This machine's existing 96×128 calibration is retained. A new installation waits for calibration before showing plugin content:
 
-See [scripts/protocol_notes.md](scripts/protocol_notes.md) for the full reverse-engineered protocol documentation.
+```bash
+uv run nyan scan
+uv run nyan device configure --model loy-ys6247040189l --address E0:6E:41:FA:FE:69
+uv run nyan calibrate --size 96x128
+# Wait for the pattern. Check the COMPLETE physical panel:
+# GREEN top, BLUE left, YELLOW right, RED bottom; no unused LEDs outside.
+uv run nyan calibrate --confirm
+```
 
-Key facts:
-- BLE service `0000fff0`, write char `0000fff2`, notify char `0000fff1`
-- Packets use `aa55ffff` header with CheckSum8 Modulo 65536
-- Images are sent as GIF data in 196-byte chunks
-- Display is 32×32 pixels
+Try another `--size WIDTHxHEIGHT` if edges are clipped or LEDs remain outside the pattern. An upload ACK cannot establish native resolution. See [device profiles and calibration](docs/devices.md).
 
-## How it was reverse-engineered
+## Select content from the terminal
 
-No prior public RE existed for this device. The protocol was cracked through:
+```bash
+nyan plugins list
+nyan use spotify
+nyan use mpris                         # Any MPRIS player; prefer one playing
+nyan use mpris --set player=firefox     # Or vlc, mpv, another playerctl name
+nyan use clock --set color=cyan
+nyan show ~/Pictures/cover.png
+nyan show ~/Pictures/animation.gif
+nyan show --color red
+nyan show --text HELLO
+nyan device configure --quality detail --fit cover
+nyan status
+nyan service logs
+```
 
-1. BLE scanning with [bleak](https://github.com/hbldh/bleak) to find the device (name prefix "YS")
-2. GATT service discovery (single service, two characteristics)
-3. Trying command patterns from similar devices — the [ATOTOZONE LED matrix RE](https://overscore.media/posts/series/matthews-machinations/reverse-engineering-a-ble-led-matrix) by OverScore Media turned out to use a compatible protocol family
-4. Trial and error to find correct chunk indexing (`00 <idx> 00`) and frame count
+Players must publish `mpris:artUrl`; a player or browser that provides no cover cannot supply one. Missing artwork leaves the previous display in place. Same-artwork tracks do not trigger duplicate transfers. `playerctl --list-all` lists your media players. The `spotify` plugin is an explicit Spotify preset of the same general MPRIS provider.
 
-## Open questions
+`show` uses the running watcher, switching to the `image` plugin, which also notices subsequent file changes. With the watcher stopped, `show` performs a single acknowledged upload. The original commands `uv run scripts/display.py --color red`, `scripts/scan.py`, and `scripts/discover.py` remain as compatibility entry points. Stop the service before `discover`, which opens its own GATT connection.
 
-- What is the actual display resolution? We use 32×32 and it works, but the device might support 48×48 or 64×64
-- Can animated GIFs be sent (multi-frame)?
-- What do the CONST_SEQ bytes actually mean? (`c1020901010c01000d01000e0100140301090a11040001000a1207`)
-- Can brightness be controlled via BLE?
-- Is there a "read current image" command?
-- The `81c4` payload length marker — what does it encode?
+## Upload behavior and speed
 
-## Demos
+On the calibrated device, the driver alternates between RAM program slots 1 and 2. The current image/GIF keeps playing while the next complete GIF uploads into the inactive slot. Only after every chunk is acknowledged does one short command select the new program. Returning to an image still in those two slots sends only that command. This was visually confirmed with blue, green, and full-resolution album artwork; one selection command was acknowledged in **180 ms**. This is ACK latency, not an instrumented measurement of panel refresh.
 
-The `scripts/` directory contains themed animations vibe-coded with Claude Code:
+A new connection starts with a short screen-off bootstrap while the first known program loads, suppressing the firmware's “Amusing LED” text. Subsequent successful transfers leave the current program visible. A failed inactive upload never selects partial data. If selection becomes uncertain, the driver masks the screen, disconnects, and retries conservatively. It never sends the default-animation CLEAR command.
 
-- `pycon_lithuania_2026.py` — Lithuanian aurora with a slithering Python snake, live-coded during [Vibe reverse engineering of old games and new hardware](https://pycon.lt/2026/talks/HLCPZ9) at [PyCon Lithuania 2026](https://pycon.lt/2026)
-- `ai_breakfast_warsaw.py` — coffee cup with rising steam, for [AI Breakfast Warsaw](https://luma.com/warsaw-ai-breakfast)
-- `womens_day.py` — floating hearts, bouncing text, tulips (`--for Name` to personalize)
-- `to_err_is_ai.py` — blue grid with "To err is ~~human~~ AI" strikethrough reveal, glitching robot, and K3/Quesma branding, for [K3 Sessions: To Err is AI](https://luma.com/m0bse8um)
-- `fundusz_zdolni.py` — rotating spotlight across five discipline icons (π / atom / test tube / DNA / note) and a scrolling "BUDZIMY CIEKAWOSC!" motto, for the [Fundusz Zdolni](https://fundusz.org/) Falenty 2026 scientific camp for gifted high school students
+Holding Bluetooth open removes repeated connection setup; it does not remove image-transfer time. A full cover currently takes roughly **15–18 seconds**, depending on compressed size and radio conditions. A GIF already on the device animates locally. Arbitrary live framebuffer streaming and direct PNG/JPEG/raw RGB transmission remain unverified. Continuously sending full images would queue slow transfers; the watcher instead retains only the newest pending frame. Cached program switches are fast, while new content still needs an upload.
 
-## Useful references
+The established 196-byte chunks and matching ACKs are retained, with 30 ms extra pacing after each ACK. Failures fall back to 300 ms pacing and a fresh connection. No speculative packet windowing or per-packet retries are used. Current GIF limit: 49,980 bytes / 255 chunks; source limit: 8 MiB and 200 animation frames.
 
-- [OverScore Media: Reverse Engineering a BLE LED Matrix](https://overscore.media/posts/series/matthews-machinations/reverse-engineering-a-ble-led-matrix) — closest protocol documentation (ATOTOZONE CI-VIALD19), same `aa55ffff` packet family
-- [BK-Light AppBypass](https://github.com/Pupariaa/Bk-Light-AppBypass) — Python BLE toolkit for a similar Chinese LED matrix (different protocol but helpful architecture reference)
-- [bleak](https://github.com/hbldh/bleak) — cross-platform Python BLE library
+## Write plugins
+
+Content plugins are TOML files with **inputs**, **requires**, **output**, **operation**, and **python** sections. They can query a binary, import a library, generate Pillow images, or return local/file/HTTP(S) image sources. Python code runs in a persistent subprocess with a bounded polling timeout.
+
+```bash
+nyan plugins new my_display
+# Edit ~/.config/nyan-pack/plugins/my_display.toml
+nyan plugins validate ~/.config/nyan-pack/plugins/my_display.toml
+nyan use my_display
+```
+
+The watcher discovers files automatically and reloads changes to the active plugin. [Plugin format and Python API](docs/plugins.md) includes a complete example. Device manifests and BLE drivers are separate plugins: see [device profiles](docs/devices.md). TOML uses Python's standard library; no YAML dependency is needed.
+
+Preferences: `~/.config/nyan-pack/config.json`. User content plugins: `~/.config/nyan-pack/plugins/`. User device manifests: `~/.config/nyan-pack/devices/`. Encoded previews: `~/.cache/nyan-pack/plugins/<id>/output.gif`. XDG directory overrides are supported.
+
+## Development
+
+```bash
+nyan service stop
+uv run nyan watch --dry-run             # Real plugins/conversion, no Bluetooth
+# In another terminal: uv run nyan use spotify; uv run nyan status
+# Ctrl-C the foreground watcher before restarting the service.
+nyan service start
+uv run python -m unittest discover -s tests -v
+```
+
+Regression tests exercise worker timeouts, plugin switching/reloading, rendering and GIF animation preservation, retries, connection reuse, inactive-slot staging, cached selection, and ACK validation without hardware or network. Ad-hoc protocol probes were removed. Supported calibration and BLE inspection live in the CLI. Themed animation generators are preserved under [examples/](examples/) and send through the watcher.
+
+[Protocol notes](docs/protocol.md) record verified bytes, experiments, and sources. This project began with reverse engineering of the [Nyan Gear](https://nyangear.com/) / LOY SPACE backpack protocol; stored-program research also used the primary implementation in [popledder](https://github.com/eskibars/popledder). Android MediaSession/BluetoothGatt support remains future work.
